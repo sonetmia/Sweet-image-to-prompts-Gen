@@ -35,6 +35,8 @@ export default function App() {
   const [apiKey, setApiKey] = useState('');
   const [groqApiKey, setGroqApiKey] = useState('');
   const [activeProvider, setActiveProvider] = useState<'gemini' | 'groq'>('gemini');
+  const [copyToast, setCopyToast] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load API key from localStorage on mount
@@ -106,10 +108,8 @@ export default function App() {
 
     const ai = activeProvider === 'gemini' ? new GoogleGenAI({ apiKey: activeGeminiKey! }) : null;
 
-    for (let i = 0; i < pendingFiles.length; i++) {
-      const fileObj = pendingFiles[i];
-      setStatusMsg(`Generating detailed prompt for "${fileObj.file.name}"...`);
-      
+    const processFile = async (fileObj: UploadedFile) => {
+      setStatusMsg(`Processing "${fileObj.file.name}"...`);
       setFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'processing' } : f));
 
       try {
@@ -120,14 +120,12 @@ export default function App() {
         if (activeProvider === 'gemini' && ai) {
           const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: [
-              {
-                parts: [
-                  { text: systemPrompt },
-                  { inlineData: { mimeType: fileObj.file.type, data: base64Data } }
-                ]
-              }
-            ]
+            contents: {
+              parts: [
+                { text: systemPrompt },
+                { inlineData: { mimeType: fileObj.file.type, data: base64Data } }
+              ]
+            }
           });
           prompt = response.text || "Failed to generate prompt.";
         } else if (activeProvider === 'groq') {
@@ -162,9 +160,20 @@ export default function App() {
         console.error(error);
         setFiles(prev => prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: error.message } : f));
       }
+    };
 
-      const newProgress = Math.round(((i + 1) / pendingFiles.length) * 100);
-      setProgress(newProgress);
+    // Parallel processing with concurrency limit of 5
+    const concurrency = 5;
+    const batches = [];
+    for (let i = 0; i < pendingFiles.length; i += concurrency) {
+      batches.push(pendingFiles.slice(i, i + concurrency));
+    }
+
+    let processedCount = 0;
+    for (const batch of batches) {
+      await Promise.all(batch.map(file => processFile(file)));
+      processedCount += batch.length;
+      setProgress(Math.round((processedCount / pendingFiles.length) * 100));
     }
 
     setIsProcessing(false);
@@ -173,7 +182,8 @@ export default function App() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Could add a toast here
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 2000);
   };
 
   const downloadAll = () => {
@@ -192,6 +202,13 @@ export default function App() {
 
   const processedCount = files.filter(f => f.status === 'done').length;
 
+  const clearAll = () => {
+    if (isProcessing) return;
+    setFiles([]);
+    setProgress(0);
+    setStatusMsg('');
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -206,7 +223,10 @@ export default function App() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-primary/10 rounded-full transition-colors text-slate-600 dark:text-slate-400">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-2 hover:bg-primary/10 rounded-full transition-colors text-slate-600 dark:text-slate-400"
+            >
               <Settings className="w-6 h-6" />
             </button>
             <div className="h-8 w-px bg-primary/20"></div>
@@ -235,68 +255,11 @@ export default function App() {
               Upload your images and let AI craft high-fidelity prompts for Midjourney, Stable Diffusion, or DALL-E.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm font-bold text-primary">
-              <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Signoup free</span>
+              <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Sign up free</span>
               <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Unlimited Prompts generate</span>
               <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Published by SONET</span>
             </div>
           </motion.div>
-        </section>
-
-        {/* API Key Config */}
-        <section className="bg-white dark:bg-white/5 border border-primary/10 rounded-xl p-6 shadow-xl space-y-6">
-          <div className="flex items-center justify-center gap-4 p-1 bg-slate-100 dark:bg-background-dark/50 rounded-lg w-fit mx-auto border border-primary/10">
-            <button 
-              onClick={() => setActiveProvider('gemini')}
-              className={`px-6 py-2 rounded-md font-bold transition-all ${activeProvider === 'gemini' ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-primary'}`}
-            >
-              Gemini API
-            </button>
-            <button 
-              onClick={() => setActiveProvider('groq')}
-              className={`px-6 py-2 rounded-md font-bold transition-all ${activeProvider === 'groq' ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-primary'}`}
-            >
-              Groq API
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Gemini API Key</label>
-              <div className="relative group">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-primary/60 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-background-dark/50 border border-primary/20 rounded-lg py-3 pl-11 pr-4 focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all text-slate-900 dark:text-white"
-                  placeholder="Enter Gemini API key..."
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Groq API Key</label>
-              <div className="relative group">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-primary/60 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="password"
-                  value={groqApiKey}
-                  onChange={(e) => setGroqApiKey(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-background-dark/50 border border-primary/20 rounded-lg py-3 pl-11 pr-4 focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none transition-all text-slate-900 dark:text-white"
-                  placeholder="Enter Groq API key..."
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex justify-center">
-            <button 
-              onClick={saveKeys}
-              className="bg-primary hover:bg-primary/90 text-white font-bold py-3.5 px-12 rounded-lg transition-all shadow-lg shadow-primary/30 flex items-center gap-2"
-            >
-              <Save className="w-5 h-5" />
-              Save All Keys
-            </button>
-          </div>
         </section>
 
         {/* Upload Area */}
@@ -387,6 +350,14 @@ export default function App() {
               >
                 <Download className="w-4 h-4" />
                 Download TXT
+              </button>
+              <button 
+                onClick={clearAll}
+                disabled={files.length === 0 || isProcessing}
+                className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All
               </button>
             </div>
           </div>
@@ -505,6 +476,109 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettings(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white dark:bg-background-dark border border-primary/20 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-primary/10 flex items-center justify-between">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-primary" />
+                  API Settings
+                </h3>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="text-slate-400 hover:text-primary transition-colors"
+                >
+                  <Trash2 className="w-5 h-5 rotate-45" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-center gap-4 p-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-primary/10">
+                  <button 
+                    onClick={() => setActiveProvider('gemini')}
+                    className={`flex-1 py-2 rounded-md font-bold transition-all ${activeProvider === 'gemini' ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-primary'}`}
+                  >
+                    Gemini
+                  </button>
+                  <button 
+                    onClick={() => setActiveProvider('groq')}
+                    className={`flex-1 py-2 rounded-md font-bold transition-all ${activeProvider === 'groq' ? 'bg-primary text-white shadow-lg' : 'text-slate-500 hover:text-primary'}`}
+                  >
+                    Groq
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Gemini API Key</label>
+                    <div className="relative group">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
+                      <input 
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-primary/20 rounded-lg py-2 pl-10 pr-4 focus:ring-2 focus:ring-primary/40 outline-none text-sm"
+                        placeholder="Enter Gemini key..."
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Groq API Key</label>
+                    <div className="relative group">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
+                      <input 
+                        type="password"
+                        value={groqApiKey}
+                        onChange={(e) => setGroqApiKey(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-primary/20 rounded-lg py-2 pl-10 pr-4 focus:ring-2 focus:ring-primary/40 outline-none text-sm"
+                        placeholder="Enter Groq key..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => { saveKeys(); setShowSettings(false); }}
+                  className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-primary/30 flex items-center justify-center gap-2"
+                >
+                  <Save className="w-5 h-5" />
+                  Save Configuration
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {copyToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] font-bold flex items-center gap-2"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            Prompt copied to clipboard!
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
