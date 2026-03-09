@@ -115,6 +115,7 @@ export default function App() {
       try {
         const base64Data = fileObj.base64.split(',')[1];
         let prompt = "";
+        const systemPrompt = "Analyze this image in extreme detail. Generate a comprehensive, high-fidelity AI image generation prompt for Midjourney v6, Stable Diffusion XL, or DALL-E 3. Include: 1. Subject description (features, clothing, expression). 2. Environment/Background (setting, atmosphere, depth). 3. Lighting (source, intensity, shadows, mood). 4. Color Palette (dominant hues, accents, saturation). 5. Camera & Composition (angle, lens type, framing, depth of field). 6. Artistic Style (medium, texture, level of detail). Return ONLY the prompt text, no headers or commentary.";
 
         if (activeProvider === 'gemini' && ai) {
           const response = await ai.models.generateContent({
@@ -122,7 +123,7 @@ export default function App() {
             contents: [
               {
                 parts: [
-                  { text: "Analyze this image in extreme detail. Generate a comprehensive, high-fidelity AI image generation prompt for Midjourney v6, Stable Diffusion XL, or DALL-E 3. Include: 1. Subject description (features, clothing, expression). 2. Environment/Background (setting, atmosphere, depth). 3. Lighting (source, intensity, shadows, mood). 4. Color Palette (dominant hues, accents, saturation). 5. Camera & Composition (angle, lens type, framing, depth of field). 6. Artistic Style (medium, texture, level of detail). Return ONLY the prompt text, no headers or commentary." },
+                  { text: systemPrompt },
                   { inlineData: { mimeType: fileObj.file.type, data: base64Data } }
                 ]
               }
@@ -142,7 +143,7 @@ export default function App() {
                 {
                   role: "user",
                   content: [
-                    { type: "text", text: "Analyze this image in extreme detail. Generate a comprehensive, high-fidelity AI image generation prompt for Midjourney v6, Stable Diffusion XL, or DALL-E 3. Include: 1. Subject description (features, clothing, expression). 2. Environment/Background (setting, atmosphere, depth). 3. Lighting (source, intensity, shadows, mood). 4. Color Palette (dominant hues, accents, saturation). 5. Camera & Composition (angle, lens type, framing, depth of field). 6. Artistic Style (medium, texture, level of detail). Return ONLY the prompt text, no headers or commentary." },
+                    { type: "text", text: systemPrompt },
                     { type: "image_url", image_url: { url: fileObj.base64 } }
                   ]
                 }
