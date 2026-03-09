@@ -91,12 +91,24 @@ export default function App() {
     const activeGeminiKey = apiKey || process.env.GEMINI_API_KEY;
     const activeGroqKey = groqApiKey;
 
-    if (activeProvider === 'gemini' && !activeGeminiKey) {
-      alert('Please provide a Gemini API Key.');
-      return;
+    let providerToUse = activeProvider;
+    let keyToUse = providerToUse === 'gemini' ? activeGeminiKey : activeGroqKey;
+
+    if (!keyToUse) {
+      if (providerToUse === 'gemini' && activeGroqKey) {
+        providerToUse = 'groq';
+        keyToUse = activeGroqKey;
+        setActiveProvider('groq');
+      } else if (providerToUse === 'groq' && activeGeminiKey) {
+        providerToUse = 'gemini';
+        keyToUse = activeGeminiKey;
+        setActiveProvider('gemini');
+      }
     }
-    if (activeProvider === 'groq' && !activeGroqKey) {
-      alert('Please provide a Groq API Key.');
+
+    if (!keyToUse) {
+      alert('Please provide either a Gemini or Groq API Key in Settings.');
+      setShowSettings(true);
       return;
     }
 
@@ -106,7 +118,7 @@ export default function App() {
     setIsProcessing(true);
     setProgress(0);
 
-    const ai = activeProvider === 'gemini' ? new GoogleGenAI({ apiKey: activeGeminiKey! }) : null;
+    const ai = providerToUse === 'gemini' ? new GoogleGenAI({ apiKey: keyToUse! }) : null;
 
     const processFile = async (fileObj: UploadedFile) => {
       setStatusMsg(`Processing "${fileObj.file.name}"...`);
@@ -117,7 +129,7 @@ export default function App() {
         let prompt = "";
         const systemPrompt = "Analyze this image in extreme detail. Generate a comprehensive, high-fidelity AI image generation prompt for Midjourney v6, Stable Diffusion XL, or DALL-E 3. Include: 1. Subject description (features, clothing, expression). 2. Environment/Background (setting, atmosphere, depth). 3. Lighting (source, intensity, shadows, mood). 4. Color Palette (dominant hues, accents, saturation). 5. Camera & Composition (angle, lens type, framing, depth of field). 6. Artistic Style (medium, texture, level of detail). Return ONLY the prompt text, no headers or commentary.";
 
-        if (activeProvider === 'gemini' && ai) {
+        if (providerToUse === 'gemini' && ai) {
           const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: {
@@ -128,11 +140,11 @@ export default function App() {
             }
           });
           prompt = response.text || "Failed to generate prompt.";
-        } else if (activeProvider === 'groq') {
+        } else if (providerToUse === 'groq') {
           const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${activeGroqKey}`,
+              'Authorization': `Bearer ${keyToUse}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -251,9 +263,6 @@ export default function App() {
             transition={{ delay: 0.1 }}
             className="space-y-2"
           >
-            <p className="text-slate-600 dark:text-slate-400 text-lg max-w-xl mx-auto">
-              Upload your images and let AI craft high-fidelity prompts for Midjourney, Stable Diffusion, or DALL-E.
-            </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm font-bold text-primary">
               <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Sign up free</span>
               <span className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20">Unlimited Prompts generate</span>
